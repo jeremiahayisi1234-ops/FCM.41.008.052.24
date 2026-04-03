@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>VR Neoclassical Mansion — Design &amp; Implementation Report</title>
+  <style>
+    @media print {
+      body { font-size: 11pt; }
+      h1 { page-break-before: always; }
+      h1:first-of-type { page-break-before: avoid; }
+    }
+    body { font-family: Georgia, "Times New Roman", serif; max-width: 820px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.55; color: #222; }
+    h1, h2, h3 { font-family: Calibri, Arial, sans-serif; color: #1a1a2e; }
+    h1 { font-size: 1.75rem; border-bottom: 2px solid #2c3e50; padding-bottom: 0.35rem; }
+    h2 { font-size: 1.25rem; margin-top: 1.75rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.25rem; }
+    code, .path { font-family: Consolas, monospace; font-size: 0.9em; background: #f4f4f4; padding: 0.1em 0.35em; }
+    ul { margin: 0.5rem 0 1rem 1.25rem; }
+    .meta { color: #555; font-size: 0.95rem; margin-bottom: 2rem; }
+    .note { border-left: 4px solid #3498db; padding-left: 1rem; margin: 1rem 0; color: #333; }
+  </style>
+</head>
+<body>
+
+  <h1>VR Neoclassical Mansion (A-Frame) — Design &amp; Technical Report</h1>
+  <p class="meta"><strong>Project folder:</strong> <span class="path">Examination/</span> &nbsp;|&nbsp; <strong>Engine:</strong> A-Frame 1.4.2 &nbsp;|&nbsp; <strong>Extensions:</strong> aframe-extras (movement)</p>
+
+  <h2>1. Design goals and architectural inspiration</h2>
+  <p>
+    The experience models a symmetrical neoclassical residence inspired by the White House layout: a dominant central block, east and west wings, and a columned entrance portico with a pediment. The composition emphasizes bilateral symmetry, clear axial paths from the main gate through the grounds to the portico, and a private rear zone for the swimming pool and animated figures.
+  </p>
+  <p>
+    The compound is enclosed by a perimeter fence with a dedicated main gate at the south approach. Pathways use contrasting stone-toned materials on the lawn plane to reinforce hierarchy and wayfinding without heavy textures, keeping GPU memory and bandwidth low.
+  </p>
+
+  <h2>2. Interior program (six developed rooms)</h2>
+  <p>The following spaces are fully laid out with flooring, walls, scaled furniture, and decorative props:</p>
+  <ul>
+    <li><strong>Living room 1 (west):</strong> paired sofas, coffee table, side cabinet, wall art, rug, and a potted plant.</li>
+    <li><strong>Living room 2 (east):</strong> alternate palette, matching furniture typology for variety.</li>
+    <li><strong>Dining area:</strong> dining table with four seats, wall art, and sheer curtain planes.</li>
+    <li><strong>Kitchen:</strong> cabinet run, counter, appliance block, and small plant.</li>
+    <li><strong>Bedroom 1 and bedroom 2 (upper level):</strong> beds with headboards, side storage, curtains, art, and plants.</li>
+  </ul>
+  <p>
+    A stair flight connects the ground floor to the second level; the first-floor ceiling is split around the stairwell to avoid clipping while preserving spatial readability.
+  </p>
+
+  <h2>3. Landscape and tree specification</h2>
+  <p>
+    Exactly <strong>three tree types</strong> are implemented with <strong>three instances each</strong> (nine trees total), using lightweight primitives rather than heavy external meshes:
+  </p>
+  <ul>
+    <li><strong>Type A — Broadleaf:</strong> trunk cylinder plus overlapping spheres for canopy volume.</li>
+    <li><strong>Type B — Conical evergreen:</strong> stacked cones for a tiered silhouette.</li>
+    <li><strong>Type C — Palm:</strong> tall trunk with angled cone fronds.</li>
+  </ul>
+  <p>This satisfies the assignment constraint while maintaining stable frame times on typical classroom hardware.</p>
+
+  <h2>4. Lighting model (entity-component system)</h2>
+  <p>
+    Lighting uses A-Frame’s declarative <code>&lt;a-entity light&gt;</code> components:
+  </p>
+  <ul>
+    <li><strong>Ambient</strong> fill to prevent crushed shadows indoors.</li>
+    <li><strong>Directional “sun”</strong> with shadow maps tuned for the plot size (orthographic frustum bounds on the shadow camera).</li>
+    <li><strong>Point lights</strong> in living zones, dining, kitchen, bedrooms, and near the pool deck for dusk-like accents.</li>
+  </ul>
+  <p>
+    Shadow casting is enabled on the directional light and selected geometry to balance realism and performance; interior points omit cast shadows to limit overdraw and fill-rate cost.
+  </p>
+
+  <h2>5. Swimming pool and animated water</h2>
+  <p>
+    The pool uses a dedicated custom shader registered via <code>AFRAME.registerShader('pool-water', …)</code> in <span class="path">js/water-shader.js</span>. The vertex stage displaces vertices with phase-shifted sine combinations; the fragment stage mixes deep and shallow tints, animated UV-phase patterns, and a light specular glint. A companion component <code>pool-water-animate</code> updates the <code>time</code> uniform each frame for continuous motion.
+  </p>
+  <p class="note">
+    This approach avoids heavy physics simulation while still delivering believable surface motion suitable for real-time WebGL on a wide range of devices.
+  </p>
+
+  <h2>6. Animated children and dog</h2>
+  <p>
+    Two child groups and a dog are built from simple primitives (boxes and spheres) parented under animated rigs. Motion is implemented in <span class="path">js/pool-area-animations.js</span> using parameterized paths:
+  </p>
+  <ul>
+    <li><strong>Child 1:</strong> eased elliptical orbit with a light bounce for playfulness.</li>
+    <li><strong>Child 2:</strong> inner loop with phase offset so the figures do not overlap exactly.</li>
+    <li><strong>Dog:</strong> Gerono-style figure-eight path (parametric <code>sin</code> / <code>sin·cos</code>) for smooth, continuous laps near the pool deck.</li>
+  </ul>
+  <p>Each frame, entities face their short lookahead position for coherent orientation.</p>
+
+  <h2>7. Navigation and VR ergonomics</h2>
+  <p>
+    The camera rig uses a custom <code>walk-controls</code> component (<span class="path">js/walk-controls.js</span>) so <strong>WASD</strong> and <strong>arrow keys</strong> move the viewer on the ground plane relative to the camera look direction, with <code>look-controls</code> on the camera for mouse or headset rotation. The canvas is focusable so keyboard input works reliably after clicking the scene.
+  </p>
+
+  <h2>8. Performance optimizations</h2>
+  <ul>
+    <li>Primitive-based architecture and furniture instead of multi-megabyte glTF scenes.</li>
+    <li>Shared materials via <code>a-mixin</code> to reduce material churn.</li>
+    <li>Shadow map resolution set to 1024×1024 as a practical default; selective shadow casters.</li>
+    <li>Linear fog to soften distant geometry and reduce perceived aliasing.</li>
+    <li>Renderer options: antialiasing, color management, and physically based lighting where supported.</li>
+  </ul>
+
+  <h2>9. Technical challenges and resolutions</h2>
+  <h3>9.1 Entrance visibility vs solid massing</h3>
+  <p>
+    A single bounding box for the central block occludes the interior visually and blocks coherent entry storytelling. The central volume was decomposed into back, side, and split front wall segments with a defined door opening and transom, preserving neoclassical proportions while allowing the foyer and stair to read correctly.
+  </p>
+  <h3>9.2 Water shader uniform updates</h3>
+  <p>
+    Custom shader materials may initialize after the first tick. The animation component lazily resolves <code>mesh.material</code> (including array materials) and updates <code>time</code> once uniforms are available.
+  </p>
+  <h3>9.3 Horizontal water plane ripples</h3>
+  <p>
+    Vertex displacement must use the plane’s in-plane axes (<code>position.x</code> / <code>position.y</code> for the default <code>PlaneGeometry</code>) so ripples move along the surface normal after the mesh is rotated flat.
+  </p>
+
+  <h2>10. Deployment checklist (VLE submission)</h2>
+  <ol>
+    <li>Zip the entire <span class="path">Examination/</span> directory (retain internal paths: <span class="path">index.html</span>, <span class="path">js/</span>).</li>
+    <li>Host the folder as static files over HTTPS.</li>
+    <li>Map the public URL to <strong>https://&lt;YourIndexNumber&gt;.ceiscy.com/Examination</strong> (replace <code>&lt;YourIndexNumber&gt;</code> with your actual index; configure DNS and reverse proxy or upload to the provider’s file root under <code>/Examination</code>).</li>
+    <li>Print this document to PDF from the browser (<strong>Print → Save as PDF</strong>) and upload alongside the ZIP as required.</li>
+  </ol>
+
+  <p style="margin-top:3rem; font-size:0.9rem; color:#666;">
+    End of report. Generate PDF via browser print for submission.
+  </p>
+</body>
+</html>
